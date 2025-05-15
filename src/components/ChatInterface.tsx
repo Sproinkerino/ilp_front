@@ -48,7 +48,7 @@ export const ChatInterface = () => {
     try {
       const response = await axios({
         method: 'post',
-        url: 'https://ins-api-unrz.onrender.com/api/chat//',
+        url: 'https://ins-api-unrz.onrender.com/api/chat/',
         headers: {
           'Content-Type': 'application/json',
         },

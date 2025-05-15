@@ -88,7 +88,7 @@ export default function ChatInterface() {
 
     try {
       console.log('Making API request')
-      const response = await fetch("https://ins-api-unrz.onrender.com/api/chat//", {
+      const response = await fetch("https://ins-api-unrz.onrender.com/api/chat/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
