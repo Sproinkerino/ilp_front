@@ -35,7 +35,7 @@ export default function ChatMessage({
           {isLoading ? (
             <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
           ) : (
-            <p>{content}</p>
+            <p className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: content }} />
           )}
         </div>
         <span className="text-xs text-gray-400 mt-1">{timestamp}</span>

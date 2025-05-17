@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Paperclip, ArrowUp } from "lucide-react"
 import ChatHeader from "@/components/chat-header"
 import ChatMessage from "@/components/chat-message"
@@ -20,30 +20,58 @@ export default function ChatInterface() {
   const [inputMessage, setInputMessage] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [session, setSession] = useState<any>(null)
+  const userId = useRef<string>(crypto.randomUUID())
 
   // Add initial focus
   useEffect(() => {
-    console.log('Initial focus effect running') // Log when initial focus runs
-    inputRef.current?.focus()
+    console.log('Initial focus effect running')
+    if (inputRef.current) {
+      console.log('Focusing input on mount')
+      inputRef.current.focus()
+    } else {
+      console.log('Input ref not available on mount')
+    }
   }, [])
 
+  // Add focus effect when loading state changes
+  useEffect(() => {
+    console.log('Loading state changed:', isLoading)
+    if (!isLoading && inputRef.current) {
+      console.log('Attempting to focus after loading')
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        if (inputRef.current) {
+          console.log('Focusing input after loading')
+          inputRef.current.focus()
+        } else {
+          console.log('Input ref not available after loading')
+        }
+      }, 100)
+    }
+  }, [isLoading])
+
   const scrollToBottom = () => {
-    console.log('Scrolling to bottom') // Log when scrolling
+    console.log('Scrolling to bottom')
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
   useEffect(() => {
-    console.log('Messages updated, scrolling') // Log when messages change
+    console.log('Messages updated, scrolling')
     scrollToBottom()
   }, [messages])
 
   const handleSendMessage = async (message: string = inputMessage) => {
-    console.log('Sending message:', message) // Log when sending message
+    console.log('=== Starting handleSendMessage ===')
+    console.log('Input message:', message)
+    console.log('Current session:', session)
+    console.log('User ID:', userId.current)
+
     if (!message.trim()) return
 
     const userMessage: Message = {
-      content: message,
+      content: message.replace(/\n/g, '<br>'),
       isUser: true,
       timestamp: new Date(),
     }
@@ -61,37 +89,86 @@ export default function ChatInterface() {
     setMessages((prev) => [...prev, tempMessage])
 
     try {
-      console.log('Making API request') // Log before API call
-      const response = await fetch("https://ins-api-unrz.onrender.com/api/chat", {
+      const requestBody = {
+        user_id: userId.current,
+        session: session,
+        message: message,
+      }
+      console.log('=== API Request ===')
+      console.log('Request URL:', "https://ins-api-unrz.onrender.com/api/chat/")
+      console.log('Request Body:', JSON.stringify(requestBody, null, 2))
+
+      const response = await fetch("https://ins-api-unrz.onrender.com/api/chat/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Accept": "application/json",
         },
-        body: JSON.stringify({
-          message: message,
-        }),
+        body: JSON.stringify(requestBody),
       })
 
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'API request failed')
+      }
+
       const data = await response.json()
-      console.log('API response:', data) // Log API response
+      console.log('Response data:', JSON.stringify(data, null, 2))
+      
+      // Update session state
+      setSession(data.session)
+      console.log('Updated session:', data.session)
       
       // Replace the loading message with the actual response
       setMessages((prev) => {
         const newMessages = [...prev]
+        const responseContent = data.assistant_message || data.message
+        if (!responseContent) {
+          console.warn('No response content found in API response:', data)
+        }
+        
+        // Clean the response content
+        const cleanContent = responseContent
+          ? responseContent
+              .replace(/```html\n?/g, '') // Remove ```html
+              .replace(/```\n?/g, '')     // Remove closing ```
+          : "No response received from the server. Please try again."
+
         newMessages[newMessages.length - 1] = {
-          content: data.response || data.message || "No response",
+          content: cleanContent,
           isUser: false,
           timestamp: new Date(),
         }
         return newMessages
       })
+
+      // If the conversation is done, show a summary
+      if (data.done) {
+        console.log('Conversation complete, showing summary')
+        if (!data.session?.answers) {
+          console.warn('No answers found in session data:', data.session)
+        }
+        const summaryMessage: Message = {
+          content: `Thank you for providing all the information. Here's a summary of what we've collected:
+
+<div class="bg-gray-800 p-4 rounded-lg mt-2">
+<pre class="text-sm text-gray-200">${JSON.stringify(data.session?.answers || {}, null, 2)}</pre>
+</div>`,
+          isUser: false,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, summaryMessage])
+      }
     } catch (error) {
-      console.error("API Error:", error) // This was already here
+      console.error("=== API Error ===")
+      console.error("Error details:", error)
       // Replace loading message with error message
       setMessages((prev) => {
         const newMessages = [...prev]
         newMessages[newMessages.length - 1] = {
-          content: "Sorry, there was an error processing your request.",
+          content: error instanceof Error 
+            ? `Error: ${error.message}`
+            : "Sorry, there was an error processing your request. Please try again.",
           isUser: false,
           timestamp: new Date(),
         }
@@ -99,10 +176,6 @@ export default function ChatInterface() {
       })
     } finally {
       setIsLoading(false)
-      setTimeout(() => {
-        console.log('Focusing input after message') // Log when focusing
-        inputRef.current?.focus()
-      }, 0)
     }
   }
 
@@ -114,10 +187,10 @@ export default function ChatInterface() {
 
   // Rest of the component remains the same...
   return (
-    <div className="flex min-h-screen flex-col bg-gray-950 text-gray-100">
+    <div className="flex h-screen flex-col bg-gray-950 text-gray-100">
       <ChatHeader />
 
-      <main className="flex-1 flex flex-col p-4 md:p-8 max-w-4xl mx-auto w-full">
+      <main className="flex-1 flex flex-col p-4 md:p-8 max-w-4xl mx-auto w-full h-[calc(100vh-8rem)]">
         {messages.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center">
             <h1 className="text-3xl md:text-4xl font-bold text-center mb-8">
@@ -164,7 +237,7 @@ export default function ChatInterface() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto mb-4 space-y-6">
+          <div className="flex-1 overflow-y-auto mb-4 space-y-6 pr-2" style={{ maxHeight: 'calc(100vh - 12rem)' }}>
             {messages.map((message, index) => (
               <ChatMessage
                 key={index}
@@ -178,27 +251,29 @@ export default function ChatInterface() {
           </div>
         )}
 
-        <div className="relative">
-          <Input
+        <div className="relative mt-auto">
+          <Textarea
             ref={inputRef}
             placeholder="Ask a question"
-            className="pr-24 py-6 text-base rounded-lg border border-gray-700 bg-gray-900 text-gray-100"
+            className="pr-24 py-6 text-base rounded-lg border border-gray-700 bg-gray-900 text-gray-100 resize-none min-h-[60px] max-h-[200px]"
             value={inputMessage}
             onChange={(e) => {
-              console.log('Input changed:', e.target.value) // Log input changes
+              console.log('Input changed:', e.target.value)
               setInputMessage(e.target.value)
             }}
-            onKeyPress={(e) => {
-              console.log('Key pressed:', e.key) // Log key presses
+            onKeyDown={(e) => {
+              console.log('Key pressed:', e.key)
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
                 handleSendMessage()
               }
             }}
+            onFocus={() => console.log('Input focused')}
+            onBlur={() => console.log('Input blurred')}
             disabled={isLoading}
             suppressHydrationWarning
           />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+          <div className="absolute right-3 bottom-3 flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
